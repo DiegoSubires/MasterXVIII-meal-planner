@@ -53,6 +53,14 @@ export const AVAILABLE_DISHES = [
   },
 ]
 
+export const DEFAULT_MEAL_IMAGES: Record<MealType, string> = {
+  Desayuno: 'https://res.cloudinary.com/pabxov0y/image/upload/v1782987473/cld-sample-4.jpg',
+  Brunch: 'https://res.cloudinary.com/pabxov0y/image/upload/v1786431865/Brunch_trvxgu.jpg',
+  Almuerzo: 'https://res.cloudinary.com/pabxov0y/image/upload/v1786431864/Almuerzo_sdd1sh.jpg',
+  Merienda: 'https://res.cloudinary.com/pabxov0y/image/upload/v1786431864/Merienda_xokhaq.jpg',
+  Cena: 'https://res.cloudinary.com/pabxov0y/image/upload/v1786431864/Cenas_kwjac6.jpg',
+}
+
 export const useMealStore = defineStore(
   'mealStore',
   () => {
@@ -67,13 +75,34 @@ export const useMealStore = defineStore(
       image?: string,
       isEatOut = false,
     ) => {
+      const finalImage = image || DEFAULT_MEAL_IMAGES[type]
+
       meals.value.push({
         id: crypto.randomUUID(),
         name: isEatOut ? 'Comida fuera de casa' : name,
         day,
         type,
-        image: image || `https://picsum.photos/seed/${name}/200/150`, // Imagen aleatoria basada en el nombre
+        image: finalImage,
+        isEatOut, // Ahora se guarda la propiedad isEatOut en la entidad
       })
+    }
+
+    const updateMeal = (id: string, name: string, day: string, type: MealType, image?: string) => {
+      const mealIndex = meals.value.findIndex((m) => m.id === id)
+      if (mealIndex === -1) return
+
+      const existingMeal = meals.value[mealIndex]
+
+      if (!existingMeal) return
+
+      meals.value[mealIndex] = {
+        id: existingMeal.id,
+        name,
+        day,
+        type,
+        image: image || DEFAULT_MEAL_IMAGES[type],
+        isEatOut: existingMeal.isEatOut,
+      }
     }
 
     const removeMeal = (id: string) => {
@@ -89,28 +118,36 @@ export const useMealStore = defineStore(
     }
 
     const clearPlan = () => {
-      if (confirm('¿Vaciar todo el plan semanal?')) meals.value = []
+      meals.value = []
     }
 
-    // Getters (Indicadores y Contadores)
+    // Getters
     const totalMeals = computed(() => meals.value.length)
-    const plannedDaysCount = computed(() => {
+
+    const plannedMealsProgressCount = computed(() => {
       const coreTypes: MealType[] = ['Desayuno', 'Almuerzo', 'Cena']
-      const activeDays = meals.value
-        .filter((m) => coreTypes.includes(m.type) || m.isEatOut)
-        .map((m) => m.day)
-      return new Set(activeDays).size
+
+      const coveredSlots = new Set<string>()
+
+      meals.value.forEach((m) => {
+        if (coreTypes.includes(m.type) || m.isEatOut) {
+          coveredSlots.add(`${m.day}-${m.type}`)
+        }
+      })
+
+      return coveredSlots.size
     })
 
     return {
       meals,
       favorites,
       addMeal,
+      updateMeal,
       removeMeal,
       toggleFavorite,
       clearPlan,
       totalMeals,
-      plannedDaysCount,
+      plannedMealsProgressCount,
     }
   },
   {

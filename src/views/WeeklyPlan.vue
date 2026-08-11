@@ -1,55 +1,54 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useMealStore, AVAILABLE_DISHES, type MealType } from '../stores/mealStore'
+import { useMealStore, AVAILABLE_DISHES, type MealType, type Meal } from '../stores/mealStore'
+import MealForm from '../components/MealForm.vue'
+import DayCard from '../components/DayCard.vue'
 
 const mealStore = useMealStore()
-
-const selectedDishIndex = ref('')
-const selectedDay = ref('')
-const selectedType = ref<MealType>('Almuerzo')
-const isEatOut = ref(false)
 const activeFilter = ref<'Todos' | MealType>('Todos')
+const editingMeal = ref<Meal | null>(null)
 
 const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const allMealTypes: MealType[] = ['Desayuno', 'Brunch', 'Almuerzo', 'Merienda', 'Cena']
 
-const cronologicalTypes: MealType[] = ['Desayuno', 'Brunch', 'Almuerzo', 'Merienda', 'Cena']
+const productivityPercentage = computed(() => {
+  return Math.round((mealStore.plannedMealsProgressCount / 21) * 100)
+})
 
-const addNewMeal = () => {
-  if (!selectedDay.value) return
+const handleSaveMeal = (formData: {
+  name: string
+  day: string
+  type: MealType
+  isEatOut: boolean
+}) => {
+  const trimmedName = formData.isEatOut ? 'Comida fuera de casa' : formData.name.trim()
 
-  if (isEatOut.value) {
-    mealStore.addMeal(
-      'Comida fuera de casa',
-      selectedDay.value,
-      selectedType.value,
-      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=400&q=80',
-      true,
-    )
-    resetForm()
-    return
-  }
+  const matchedDish = !formData.isEatOut
+    ? AVAILABLE_DISHES.find((d) => d.name.toLowerCase() === trimmedName.toLowerCase())
+    : null
 
-  if (selectedDishIndex.value !== '') {
-    const dish = AVAILABLE_DISHES[Number(selectedDishIndex.value)]
-    if (dish) {
-      mealStore.addMeal(dish.name, selectedDay.value, selectedType.value, dish.image, false)
-      resetForm()
-    }
+  const finalImage = formData.isEatOut
+    ? 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=400&q=80'
+    : matchedDish?.image
+
+  if (editingMeal.value) {
+    mealStore.updateMeal(editingMeal.value.id, trimmedName, formData.day, formData.type, finalImage)
+    editingMeal.value = null
+  } else {
+    mealStore.addMeal(trimmedName, formData.day, formData.type, finalImage, formData.isEatOut)
   }
 }
 
-const resetForm = () => {
-  selectedDishIndex.value = ''
-  selectedDay.value = ''
-  isEatOut.value = false
+const handleClearPlan = () => {
+  if (confirm('¿Vaciar todo el plan semanal?')) {
+    mealStore.clearPlan()
+  }
 }
-
-const productivityPercentage = computed(() => Math.round((mealStore.plannedDaysCount / 7) * 100))
 </script>
 
 <template>
   <div class="p-4 md:p-6 max-w-7xl mx-auto">
+    <!-- BARRA DE PROGRESO SEMANAL -->
     <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6">
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-3">
         <div>
@@ -59,7 +58,7 @@ const productivityPercentage = computed(() => Math.round((mealStore.plannedDaysC
           </p>
         </div>
         <button
-          @click="mealStore.clearPlan"
+          @click="handleClearPlan"
           class="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-medium transition"
         >
           🗑️ Vaciar Plan
@@ -74,62 +73,16 @@ const productivityPercentage = computed(() => Math.round((mealStore.plannedDaysC
       <div class="flex justify-between text-xs text-slate-500 mt-1">
         <span>Organización de la semana</span>
         <span class="font-bold text-slate-700"
-          >{{ productivityPercentage }}% ({{ mealStore.plannedDaysCount }}/7 días)</span
+          >{{ productivityPercentage }}% ({{ mealStore.plannedMealsProgressCount }}/21 comidas
+          principales)</span
         >
       </div>
     </section>
 
-    <section class="bg-white p-4 rounded-xl shadow-md mb-6 border border-slate-100">
-      <h2 class="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-3">
-        Completar plan semanal de comidas
-      </h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:flex gap-3 items-center">
-        <select
-          v-model="selectedDishIndex"
-          :disabled="isEatOut"
-          class="w-full lg:flex-1 border border-slate-200 p-2.5 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-slate-50"
-        >
-          <option value="" disabled>¿Qué vamos a comer?</option>
-          <option v-for="(dish, index) in AVAILABLE_DISHES" :key="index" :value="index">
-            {{ dish.name }}
-          </option>
-        </select>
+    <!-- FORMULARIO SUBCOMPONETIZADO -->
+    <MealForm :editing-meal="editingMeal" @save="handleSaveMeal" @cancel="editingMeal = null" />
 
-        <select
-          v-model="selectedDay"
-          class="w-full lg:w-44 border border-slate-200 p-2.5 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-blue-400"
-        >
-          <option value="" disabled>Selecciona día</option>
-          <option v-for="day in days" :key="day" :value="day">{{ day }}</option>
-        </select>
-
-        <select
-          v-model="selectedType"
-          class="w-full lg:w-44 border border-slate-200 p-2.5 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-blue-400"
-        >
-          <option v-for="type in allMealTypes" :key="type" :value="type">{{ type }}</option>
-        </select>
-
-        <label
-          class="flex items-center gap-2 px-2 cursor-pointer select-none text-slate-700 text-sm py-2"
-        >
-          <input
-            type="checkbox"
-            v-model="isEatOut"
-            class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-          />
-          <span>Comer fuera</span>
-        </label>
-
-        <button
-          @click="addNewMeal"
-          class="w-full lg:w-auto bg-blue-600 text-white font-medium px-6 py-2.5 rounded-lg hover:bg-blue-700 transition"
-        >
-          ➕ Asignar
-        </button>
-      </div>
-    </section>
-
+    <!-- FILTROS CRONOLÓGICOS -->
     <div class="flex flex-wrap gap-2 mb-6 items-center">
       <span class="text-xs font-bold text-slate-400 uppercase mr-2">Filtros:</span>
       <button
@@ -154,63 +107,16 @@ const productivityPercentage = computed(() => Math.round((mealStore.plannedDaysC
       </button>
     </div>
 
+    <!-- CUADRANTE SEMANAL SUBCOMPONETIZADO -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
-      <div
+      <DayCard
         v-for="day in days"
         :key="day"
-        class="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"
-      >
-        <h3
-          class="font-bold text-slate-800 border-b border-slate-200 mb-3 pb-1.5 uppercase text-xs tracking-wider text-center bg-slate-200/50 rounded p-1"
-        >
-          {{ day }}
-        </h3>
-
-        <div class="space-y-4 flex-1">
-          <div
-            v-for="type in cronologicalTypes.filter(
-              (t) => activeFilter === 'Todos' || t === activeFilter,
-            )"
-            :key="type"
-            class="space-y-1.5"
-          >
-            <div
-              v-for="meal in mealStore.meals.filter((m) => m.day === day && m.type === type)"
-              :key="meal.id"
-              class="bg-white rounded-lg shadow-sm border border-slate-100 overflow-hidden group"
-            >
-              <img :src="meal.image" class="w-full h-20 object-cover" loading="lazy" />
-              <div class="p-2">
-                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-                  {{ type }} <span v-if="meal.isEatOut" class="text-purple-600">(Fuera)</span>
-                </div>
-                <div class="flex justify-between items-start gap-1">
-                  <p class="text-xs font-semibold text-slate-700 line-clamp-2">{{ meal.name }}</p>
-                  <div class="flex items-center gap-1">
-                    <button
-                      @click="mealStore.toggleFavorite(meal.name)"
-                      class="text-xs"
-                      :class="
-                        mealStore.favorites.includes(meal.name)
-                          ? 'text-yellow-500'
-                          : 'text-slate-300'
-                      "
-                    >
-                      ★
-                    </button>
-                    <button
-                      @click="mealStore.removeMeal(meal.id)"
-                      class="text-slate-300 hover:text-red-500 text-xs"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        :day="day"
+        :meals="mealStore.meals.filter((m) => m.day === day)"
+        :active-filter="activeFilter"
+        @edit="editingMeal = $event"
+      />
     </div>
   </div>
 </template>
